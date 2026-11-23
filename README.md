@@ -41,12 +41,44 @@ ctest --test-dir build        # runs cidr_test and scope_test
 
 The binary is produced at `build/bixsn`.
 
-## Usage
+### Run it as `bixsn` from anywhere
+
+Symlink the binary into a directory on your `PATH` (no `sudo` needed if
+`~/.local/bin` is on it):
+
+```bash
+ln -sf "$PWD/build/bixsn" ~/.local/bin/bixsn
+```
+
+Then just run `bixsn`. Default wordlists are located relative to the binary,
+so it works from any directory. Rebuilding updates the symlinked binary
+automatically.
+
+## Interactive console
+
+Running `bixsn` with **no arguments** opens an interactive console where you
+select and set options before launching a scan:
+
+```
+bixsn > show                     # show current options
+bixsn > use v3                   # pick the protocol / mode
+bixsn > set targets 10.0.0.0/24
+bixsn > set range 10.0.0.0/24    # authorized scope
+bixsn > set threads 8
+bixsn > run                      # execute the scan
+bixsn > help                     # list all commands
+bixsn > exit
+```
+
+Commands: `show [options]`, `use v1|v2c|v3`, `set <option> <value>`,
+`unset <option>`, `run` (or `go`), `banner`, `help`, `exit`.
+
+## Usage (one-shot CLI)
 
 A scope is **required** — the tool will not run without one.
 
 ```
-./build/bixsn [options] <targets>
+bixsn [options] <targets>
 ```
 
 `<targets>` is a comma-separated list of CIDRs, ranges, or IPs
@@ -80,17 +112,17 @@ Any target outside the declared scope is skipped.
 
 ```bash
 # Community brute over a /24 you own (v2c)
-./build/bixsn --range 10.0.0.0/24 10.0.0.0/24
+bixsn --range 10.0.0.0/24 10.0.0.0/24
 
 # Enumerate SNMPv3 users on a single host
-./build/bixsn --version v3 --range 10.7.0.55 10.7.0.55
+bixsn --version v3 --range 10.7.0.55 10.7.0.55
 
 # Gentle sweep: fewer threads, rate-limited, longer timeout
-./build/bixsn --range 10.0.0.0/24 \
+bixsn --range 10.0.0.0/24 \
   --threads 8 --delay 50 --timeout 1500 10.0.0.0/24
 
 # Scope from a file
-./build/bixsn --scope scope.txt 10.0.0.1-50
+bixsn --scope scope.txt 10.0.0.1-50
 ```
 
 ## Interpreting output
