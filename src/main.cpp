@@ -35,7 +35,7 @@ void usage(const char* argv0) {
       "                         (ex. 10.0.0.0/24,10.0.1.1-50)\n"
       "escopo (um é OBRIGATÓRIO):\n"
       "  --scope FILE           arquivo de escopo (CIDRs/ranges, um por linha)\n"
-      "  --i-own-this-range SPEC  adiciona uma regra de escopo inline\n"
+      "  --range, -r SPEC       adiciona uma regra de escopo inline (você confirma que o range é seu)\n"
       "opções:\n"
       "  --version v1|v2c|v3    protocolo (padrão v2c)\n"
       "  --community-file FILE  wordlist de communities (padrão data/community-strings.txt)\n"
@@ -155,7 +155,8 @@ int main(int argc, char** argv) {
     std::string a = argv[i];
     if (a == "-h" || a == "--help") { usage(argv[0]); return 0; }
     else if (a == "--scope") scope_file = need(i);
-    else if (a == "--i-own-this-range") scope_rule = need(i);
+    else if (a == "--range" || a == "-r" || a == "--i-own-this-range")
+      scope_rule = need(i);
     else if (a == "--community-file") community_file = need(i);
     else if (a == "--v3-user-file") v3_user_file = need(i);
     else if (a == "--audit-log") audit_path = need(i);
@@ -187,7 +188,7 @@ int main(int argc, char** argv) {
   }
   if (scope.empty()) {
     std::cerr << "RECUSADO: nenhum escopo de autorização carregado. "
-                 "Use --scope FILE ou --i-own-this-range SPEC.\n";
+                 "Use --scope FILE ou --range SPEC.\n";
     return 2;
   }
 

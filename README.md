@@ -57,7 +57,7 @@ A scope is **required** — the tool will not run without one.
 | Option | Description |
 |--------|-------------|
 | `--scope FILE` | scope file with CIDRs/ranges, one per line |
-| `--i-own-this-range SPEC` | add an inline scope rule |
+| `--range`, `-r` SPEC | add an inline scope rule (you assert the range is yours) |
 
 Any target outside the declared scope is skipped.
 
@@ -80,13 +80,13 @@ Any target outside the declared scope is skipped.
 
 ```bash
 # Community brute over a /24 you own (v2c)
-./build/bixsn --i-own-this-range 10.0.0.0/24 10.0.0.0/24
+./build/bixsn --range 10.0.0.0/24 10.0.0.0/24
 
 # Enumerate SNMPv3 users on a single host
-./build/bixsn --version v3 --i-own-this-range 10.7.0.55 10.7.0.55
+./build/bixsn --version v3 --range 10.7.0.55 10.7.0.55
 
 # Gentle sweep: fewer threads, rate-limited, longer timeout
-./build/bixsn --i-own-this-range 10.0.0.0/24 \
+./build/bixsn --range 10.0.0.0/24 \
   --threads 8 --delay 50 --timeout 1500 10.0.0.0/24
 
 # Scope from a file
