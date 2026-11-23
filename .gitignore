@@ -1,0 +1,29 @@
+# Build (CMake out-of-source)
+/build/
+build/
+cmake-build-*/
+
+# Artefatos de compilação
+*.o
+*.a
+*.so
+*.out
+compile_commands.json
+
+# Logs de auditoria gerados em runtime (podem conter dados de alvos)
+*.log
+bixsn-audit.log
+
+# Escopos/wordlists locais do operador (não versionar alvos reais)
+scope*.txt
+*.scope
+
+# Editores / IDE
+.vscode/
+.idea/
+*.swp
+*~
+.cache/
+
+# SO
+.DS_Store

@@ -1,0 +1,48 @@
+# Community strings comuns (SNMP v1/v2c). Fonte: defaults de fabricantes e
+# seclists/Discovery/SNMP. Edite conforme seu ambiente.
+public
+private
+0
+1234
+2read
+4changes
+access
+admin
+agent
+all private
+all public
+cisco
+community
+default
+enable
+guest
+hp_admin
+ilmi
+internal
+manager
+monitor
+netman
+network
+openview
+password
+private@es0
+public@es0
+read
+read-only
+read-write
+readwrite
+rmon
+root
+router
+secret
+security
+snmp
+snmpd
+solaris
+switch
+system
+test
+tivoli
+trap
+world
+write

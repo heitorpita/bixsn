@@ -1,0 +1,19 @@
+# Usuários SNMPv3 (USM) comuns para enumeração. Edite conforme seu ambiente.
+admin
+administrator
+cisco
+default
+guest
+initial
+manager
+monitor
+netadmin
+noc
+operator
+public
+root
+snmp
+snmpadmin
+snmpuser
+snmpv3
+user
