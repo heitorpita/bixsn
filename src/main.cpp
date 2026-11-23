@@ -1,8 +1,12 @@
 // bixsn — auditoria de SNMP (v1/v2c community brute, v3 USM enum) com escopo
 // de autorização obrigatório e log de auditoria. Ferramenta para testes
 // AUTORIZADOS: sem escopo carregado, nada roda.
+#include <unistd.h>
+
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -68,6 +72,65 @@ bool parse_version(const std::string& s, core::SnmpVersion& v) {
   else if (s == "v3") v = core::SnmpVersion::V3;
   else return false;
   return true;
+}
+
+void banner(const char* mode, size_t hosts, size_t wordlist) {
+  static const char* arts[] = {
+      R"(
+      _     _
+     | |__ (_)_  _____ _ __
+     | '_ \| \ \/ / __| '_ \
+     | |_) | |>  <\__ \ | | |
+     |_.__/|_/_/\_\___/_| |_|
+)",
+      R"(
+    ####  #  #   #  ####  #   #
+    #   # #   # #   #     ##  #
+    ####  #    #     ###  # # #
+    #   # #   # #       # #  ##
+    ####  #  #   #  ####  #   #
+          . : snmp auditor : .
+)",
+      R"(
+   ┌────────────────────────────┐
+   │  b i x s n                  │
+   │  >> snmp recon & audit <<   │
+   └────────────────────────────┘
+)",
+  };
+  static const char* taglines[] = {
+      "trap set -- waiting for the walk...",
+      "they left the community string as 'public'. again.",
+      "GET in, SET nothing, leave no trace.",
+      "OID you not -- every switch talks eventually.",
+      "walk softly and carry a big MIB.",
+      "spanning trees, not covering tracks.",
+      "your uptime is my attack window.",
+      "public / private -- pick your poison.",
+      "161 reasons this switch shouldn't face the internet.",
+      "community? I barely know 'ity.",
+      "no creds? no problem. snmpwalk says hi.",
+      "the switch remembers everything. so do we.",
+  };
+  const size_t n = sizeof(arts) / sizeof(arts[0]);
+  const size_t tn = sizeof(taglines) / sizeof(taglines[0]);
+  std::srand(static_cast<unsigned>(std::time(nullptr)));
+  const char* art = arts[std::rand() % n];
+  const char* tag = taglines[std::rand() % tn];
+
+  const bool tty = isatty(fileno(stderr));
+  const char* R = tty ? "\033[1;31m" : "";
+  const char* B = tty ? "\033[1;37m" : "";
+  const char* Z = tty ? "\033[0m" : "";
+  const char* D = tty ? "\033[2;37m" : "";
+
+  std::cerr << R << art << Z << "\n";
+  std::cerr << D << "       \"" << tag << "\"" << Z << "\n\n";
+  std::cerr
+      << B << "       =[ " << Z << "bixsn v0.1.0 — authorized SNMP auditor\n"
+      << B << "+ -- --=[ " << Z << "mode    : " << mode << "\n"
+      << B << "+ -- --=[ " << Z << "scope   : " << hosts << " host(s)\n"
+      << B << "+ -- --=[ " << Z << "wordlist: " << wordlist << " entries\n\n";
 }
 
 }  // namespace
@@ -155,6 +218,15 @@ int main(int argc, char** argv) {
     std::cerr << e.what() << "\n";
     return 2;
   }
+
+  std::string mode = (version == core::SnmpVersion::V3)
+                         ? "SNMPv3 USM user enumeration"
+                         : std::string(core::to_string(version)) +
+                               " community brute";
+  if (test_write) mode += " + RW write-test";
+  size_t wordlist_n =
+      (version == core::SnmpVersion::V3) ? users.size() : communities.size();
+  banner(mode.c_str(), in_scope.size(), wordlist_n);
 
   // --- Auditoria ---
   safety::AuditLog audit(audit_path);
