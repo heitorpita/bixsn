@@ -29,6 +29,10 @@ separate_arguments(NETSNMP_CFLAGS)
 separate_arguments(NETSNMP_LIBS)
 separate_arguments(NETSNMP_EXT_LIBS)
 
+# net-snmp-config --cflags injeta flags só-de-C (ex. -Werror=implicit-function-
+# declaration) que o g++ rejeita como erro em C++. Removemos as -Werror=* de C.
+list(FILTER NETSNMP_CFLAGS EXCLUDE REGEX "^-Werror=implicit-function-declaration$")
+
 find_package(Threads REQUIRED)
 
 # --- Biblioteca com a lógica (compartilhada entre app e testes) ---
@@ -54,6 +58,15 @@ target_link_libraries(bixsn_core PUBLIC
 # --- Executável CLI ---
 add_executable(bixsn src/main.cpp)
 target_link_libraries(bixsn PRIVATE bixsn_core)
+
+# --- Instalação (cmake --install) ---
+# Instala o binário em <prefix>/bin e as wordlists em <prefix>/share/bixsn.
+# resolve_data_dir() procura ../share/bixsn relativo ao executável, então o
+# binário instalado acha as wordlists sem symlink.
+include(GNUInstallDirs)
+install(TARGETS bixsn RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(DIRECTORY data/ DESTINATION ${CMAKE_INSTALL_DATADIR}/bixsn
+        FILES_MATCHING PATTERN "*.txt")
 
 # --- Testes ---
 enable_testing()

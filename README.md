@@ -13,11 +13,15 @@ test.
 
 - **Community brute (v1/v2c)** — tries a wordlist of community strings.
 - **SNMPv3 USM user enumeration** — detects which usernames an agent recognizes.
+- **SNMPv3 auth password brute (`--v3-auth-brute`)** — after a username is found,
+  tests an auth-password wordlist against MD5 and SHA-1 (authNoPriv).
 - **Live-agent discovery** — probes for a responding v3 agent and extracts its engineID.
 - **Read-write proof (`--test-write`)** — proves RW access via an idempotent
   write-back of `sysLocation` (writes the same value it read).
 - **Mandatory authorization scope** — every target must fall inside a declared range.
-- **Append-only audit log** — timestamped record of each run.
+- **Append-only audit log** — timestamped record of each run, including every
+  SET attempt and the findings (engineID, communities, users) per host.
+- **Text or JSON output (`--format json`)** — JSON for pipeline/NOC consumption.
 
 ## Requirements
 
@@ -40,6 +44,16 @@ ctest --test-dir build        # runs cidr_test and scope_test
 ```
 
 The binary is produced at `build/bixsn`.
+
+### Install system-wide (optional)
+
+```bash
+cmake --install build --prefix ~/.local
+```
+
+This copies the binary to `<prefix>/bin` and the wordlists to
+`<prefix>/share/bixsn`; the installed binary finds them automatically (no
+symlink needed). Use a prefix on your `PATH`.
 
 ### Run it as `bixsn` from anywhere
 
@@ -100,6 +114,9 @@ Any target outside the declared scope is skipped.
 | `--version v1\|v2c\|v3` | `v2c` | SNMP protocol |
 | `--community-file FILE` | `data/community-strings.txt` | community wordlist |
 | `--v3-user-file FILE` | `data/v3-users.txt` | v3 username wordlist |
+| `--v3-pass-file FILE` | `data/v3-passwords.txt` | v3 auth-password wordlist |
+| `--v3-auth-brute` | off | after finding a v3 user, brute its auth password (MD5/SHA) |
+| `--format text\|json` | `text` | output format |
 | `--port N` | `161` | UDP port |
 | `--threads N` | `16` | concurrency |
 | `--timeout MS` | `1000` | per-request timeout |
@@ -116,6 +133,9 @@ bixsn --range 10.0.0.0/24 10.0.0.0/24
 
 # Enumerate SNMPv3 users on a single host
 bixsn --version v3 --range 10.7.0.55 10.7.0.55
+
+# Enumerate v3 users AND brute their auth passwords, as JSON
+bixsn --version v3 --v3-auth-brute --format json --range 10.7.0.55 10.7.0.55
 
 # Gentle sweep: fewer threads, rate-limited, longer timeout
 bixsn --range 10.0.0.0/24 \
@@ -159,9 +179,9 @@ src/
   core/        SNMP session wrapper, result types, OIDs
   net/         CIDR/range parsing, thread pool
   discovery/   live-agent / engineID probe
-  brute/       community brute (v1/v2c), v3 USM enumeration
+  brute/       community brute (v1/v2c), v3 USM enumeration + auth brute
   collect/     system-group walk
-  report/      text reporter
+  report/      text / JSON reporter
   safety/      authorization scope, audit log
   main.cpp     CLI entry point
 data/          default wordlists

@@ -35,6 +35,7 @@ struct Config {
   std::string target_spec;
   std::string community_file = "data/community-strings.txt";
   std::string v3_user_file = "data/v3-users.txt";
+  std::string v3_pass_file = "data/v3-passwords.txt";
   std::string audit_path = "bixsn-audit.log";
   core::SnmpVersion version = core::SnmpVersion::V2c;
   uint16_t port = 161;
@@ -43,6 +44,8 @@ struct Config {
   int retries = 1;
   int delay_ms = 0;
   bool test_write = false;
+  bool brute_v3 = false;         // após achar usuário v3, testa senhas (auth)
+  bool json = false;             // saída JSON em vez de texto
 };
 
 const char* version_str(core::SnmpVersion v) {
@@ -59,6 +62,7 @@ std::string mode_str(const Config& c) {
                       ? "SNMPv3 USM user enumeration"
                       : std::string(version_str(c.version)) + " community brute";
   if (c.test_write) m += " + RW write-test";
+  if (c.version == core::SnmpVersion::V3 && c.brute_v3) m += " + auth brute";
   return m;
 }
 
@@ -75,6 +79,9 @@ void usage(const char* argv0) {
       "  --version v1|v2c|v3    protocolo (padrão v2c)\n"
       "  --community-file FILE  wordlist de communities (padrão data/community-strings.txt)\n"
       "  --v3-user-file FILE    wordlist de usuários v3 (padrão data/v3-users.txt)\n"
+      "  --v3-pass-file FILE    wordlist de senhas v3 (padrão data/v3-passwords.txt)\n"
+      "  --v3-auth-brute        após achar usuário v3, testa senhas de auth (MD5/SHA)\n"
+      "  --format text|json     formato de saída (padrão text)\n"
       "  --port N               porta UDP (padrão 161)\n"
       "  --threads N            concorrência (padrão 16)\n"
       "  --timeout MS           timeout por request (padrão 1000)\n"
@@ -230,10 +237,14 @@ int run_scan(const Config& cfg) {
     std::cerr << "aviso: " << skipped << " alvo(s) fora do escopo, ignorados.\n";
   if (in_scope.empty()) { std::cerr << "nenhum alvo dentro do escopo.\n"; return 2; }
 
-  std::vector<std::string> communities, users;
+  std::vector<std::string> communities, users, passwords;
   try {
-    if (cfg.version == core::SnmpVersion::V3) users = read_wordlist(cfg.v3_user_file);
-    else communities = read_wordlist(cfg.community_file);
+    if (cfg.version == core::SnmpVersion::V3) {
+      users = read_wordlist(cfg.v3_user_file);
+      if (cfg.brute_v3) passwords = read_wordlist(cfg.v3_pass_file);
+    } else {
+      communities = read_wordlist(cfg.community_file);
+    }
   } catch (const std::exception& e) {
     std::cerr << e.what() << "\n";
     return 2;
@@ -249,7 +260,8 @@ int run_scan(const Config& cfg) {
   audit.write("START version=" + std::string(version_str(cfg.version)) +
               " targets=" + cfg.target_spec + " hosts_in_scope=" +
               std::to_string(in_scope.size()) +
-              (cfg.test_write ? " test_write=ON" : ""));
+              (cfg.test_write ? " test_write=ON" : "") +
+              (cfg.brute_v3 ? " v3_auth_brute=ON" : ""));
 
   auto timeout = std::chrono::milliseconds(cfg.timeout_ms);
   brute::Options opt;
@@ -257,8 +269,10 @@ int run_scan(const Config& cfg) {
   opt.timeout = timeout;
   opt.retries = cfg.retries;
   opt.test_write = cfg.test_write;
+  opt.audit = &audit;
   core::SnmpVersion version = cfg.version;
   int retries = cfg.retries;
+  bool brute_v3 = cfg.brute_v3;
 
   std::vector<core::HostResult> results(in_scope.size());
   net::ThreadPool pool(cfg.threads, std::chrono::milliseconds(cfg.delay_ms));
@@ -267,10 +281,14 @@ int run_scan(const Config& cfg) {
     core::HostResult& hr = results[i];
     hr.host = in_scope[i];
     hr.port = cfg.port;
-    pool.submit([&hr, &communities, &users, &opt, version, timeout, retries] {
+    pool.submit([&hr, &communities, &users, &passwords, &opt, version, timeout,
+                 retries, brute_v3] {
       discovery::probe(hr, timeout, retries);
       if (version == core::SnmpVersion::V3) {
         brute::enum_v3_users(hr, users, timeout, retries);
+        if (brute_v3 && !passwords.empty())
+          for (const auto& u : hr.v3_users_valid)
+            brute::brute_v3_auth(hr, u, passwords, timeout, retries, opt.audit);
       } else {
         brute::community(hr, communities, opt);
         if (!hr.communities_ro.empty())
@@ -281,7 +299,25 @@ int run_scan(const Config& cfg) {
   }
   pool.wait_idle();
 
-  report::write_text(std::cout, results);
+  // Registra os achados no audit (rastreabilidade forense): engineID,
+  // communities e usuários por host com SNMP aberto.
+  auto joined = [](const std::vector<std::string>& v) {
+    std::string s;
+    for (size_t i = 0; i < v.size(); ++i) s += (i ? "," : "") + v[i];
+    return s;
+  };
+  for (const auto& hr : results) {
+    if (!hr.snmp_open) continue;
+    std::string line = "FINDING host=" + hr.host;
+    if (!hr.engine_id.empty()) line += " engineID=" + hr.engine_id;
+    if (!hr.communities_ro.empty()) line += " ro=[" + joined(hr.communities_ro) + "]";
+    if (!hr.communities_rw.empty()) line += " rw=[" + joined(hr.communities_rw) + "]";
+    if (!hr.v3_users_valid.empty()) line += " v3users=[" + joined(hr.v3_users_valid) + "]";
+    audit.write(line);
+  }
+
+  if (cfg.json) report::write_json(std::cout, results);
+  else report::write_text(std::cout, results);
   audit.write("END");
   return 0;
 }
@@ -310,8 +346,11 @@ void console_help() {
       "  retries     retries por request (padrão 1)\n"
       "  delay       intervalo mínimo entre requests em ms\n"
       "  test-write  on | off  (ESCREVE no alvo)\n"
+      "  v3-auth     on | off  (brute de senha v3 após achar usuário)\n"
+      "  format      text | json\n"
       "  communities arquivo de wordlist de communities\n"
       "  users       arquivo de wordlist de usuários v3\n"
+      "  passwords   arquivo de wordlist de senhas v3\n"
       "  audit-log   caminho do log de auditoria\n";
 }
 
@@ -322,9 +361,13 @@ void show_options(const Config& c) {
   std::cerr << "   ----         -----------                  ------  ---------\n";
   auto row = [](const char* name, const std::string& v, const char* req,
                 const char* desc) {
-    std::string n = name, vv = v;
+    std::string n = name;
     n.resize(12, ' ');
-    vv.resize(28, ' ');
+    // Valores curtos alinham a coluna; valores longos (paths) são mostrados
+    // por inteiro e empurram req/desc para a direita em vez de serem cortados.
+    std::string vv = v;
+    if (vv.size() < 28) vv.resize(28, ' ');
+    else vv += "  ";
     std::cerr << "   " << n << " " << vv << " " << req << "    " << desc << "\n";
   };
   row("mode", version_str(c.version), "sim", "v1 | v2c | v3");
@@ -337,8 +380,11 @@ void show_options(const Config& c) {
   row("retries", std::to_string(c.retries), "não", "retries por request");
   row("delay", std::to_string(c.delay_ms), "não", "ms entre requests");
   row("test-write", c.test_write ? "on" : "off", "não", "ESCREVE no alvo");
+  row("v3-auth", c.brute_v3 ? "on" : "off", "não", "brute de senha v3");
+  row("format", c.json ? "json" : "text", "não", "formato de saída");
   row("communities", val(c.community_file), "não", "wordlist communities");
   row("users", val(c.v3_user_file), "não", "wordlist usuários v3");
+  row("passwords", val(c.v3_pass_file), "não", "wordlist senhas v3");
   row("audit-log", val(c.audit_path), "não", "log de auditoria");
   std::cerr << "\n   * defina range OU scope-file (pelo menos um).\n\n";
 }
@@ -365,10 +411,18 @@ bool set_option(Config& c, const std::string& key, const std::string& value) {
     if (!as_int(c.delay_ms)) return false;
   } else if (key == "test-write" || key == "testwrite") {
     c.test_write = (value == "on" || value == "true" || value == "1" || value == "yes");
+  } else if (key == "v3-auth" || key == "v3-auth-brute") {
+    c.brute_v3 = (value == "on" || value == "true" || value == "1" || value == "yes");
+  } else if (key == "format") {
+    if (value == "json") c.json = true;
+    else if (value == "text") c.json = false;
+    else { std::cerr << "formato inválido (text|json)\n"; return false; }
   } else if (key == "communities" || key == "community-file") {
     c.community_file = value;
   } else if (key == "users" || key == "v3-user-file") {
     c.v3_user_file = value;
+  } else if (key == "passwords" || key == "v3-pass-file") {
+    c.v3_pass_file = value;
   } else if (key == "audit-log" || key == "auditlog") {
     c.audit_path = value;
   } else {
@@ -384,6 +438,7 @@ void unset_option(Config& c, const std::string& key) {
   else if (key == "range") c.scope_rule.clear();
   else if (key == "scope-file" || key == "scope") c.scope_file.clear();
   else if (key == "test-write") c.test_write = false;
+  else if (key == "v3-auth" || key == "v3-auth-brute") c.brute_v3 = false;
   else { std::cerr << "não dá pra limpar: " << key << "\n"; return; }
   std::cerr << key << " => (vazio)\n";
 }
@@ -442,6 +497,7 @@ int main(int argc, char** argv) {
   std::string data_dir = resolve_data_dir();
   cfg.community_file = data_dir + "/community-strings.txt";
   cfg.v3_user_file = data_dir + "/v3-users.txt";
+  cfg.v3_pass_file = data_dir + "/v3-passwords.txt";
 
   if (argc == 1) return console(cfg);
 
@@ -457,6 +513,14 @@ int main(int argc, char** argv) {
       cfg.scope_rule = need(i);
     else if (a == "--community-file") cfg.community_file = need(i);
     else if (a == "--v3-user-file") cfg.v3_user_file = need(i);
+    else if (a == "--v3-pass-file") cfg.v3_pass_file = need(i);
+    else if (a == "--v3-auth-brute") cfg.brute_v3 = true;
+    else if (a == "--format") {
+      std::string f = need(i);
+      if (f == "json") cfg.json = true;
+      else if (f == "text") cfg.json = false;
+      else { std::cerr << "formato inválido: " << f << " (text|json)\n"; return 2; }
+    }
     else if (a == "--audit-log") cfg.audit_path = need(i);
     else if (a == "--port") cfg.port = static_cast<uint16_t>(std::stoi(need(i)));
     else if (a == "--threads") cfg.threads = static_cast<size_t>(std::stoul(need(i)));

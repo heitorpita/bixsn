@@ -2,6 +2,7 @@
 
 #include "../core/oids.h"
 #include "../core/snmp_session.h"
+#include "../safety/audit_log.h"
 
 namespace bixsn::brute {
 
@@ -49,7 +50,14 @@ void community(HostResult& hr, const std::vector<std::string>& communities,
     auto sep = val.find(": ");
     if (sep != std::string::npos) val = val.substr(sep + 2);
 
+    if (opt.audit)
+      opt.audit->write("SET host=" + hr.host + " oid=sysLocation(" +
+                       oids::kSysLocation + ") community='" + comm +
+                       "' write-back-idempotente");
     GetResult w = s.set(oids::kSysLocation, 's', val);
+    if (opt.audit)
+      opt.audit->write("SET-RESULT host=" + hr.host + " community='" + comm +
+                       "' status=" + to_string(w.status));
     if (w.status == GetStatus::Ok) {
       hr.communities_rw.push_back(comm);
       hr.findings.push_back(

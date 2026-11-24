@@ -1,0 +1,72 @@
+===============================================================================
+ bixsn — STAND-BY / HANDOFF
+ Escrito: 2026-11-23  |  Atualizado: 2026-11-24
+===============================================================================
+
+ESTADO ATUAL
+------------
+- Compila e linka contra libsnmp 5.9.4. `ctest` passa (cidr_test, scope_test).
+- Build agora SEM warnings (filtramos -Werror=implicit-function-declaration que
+  o net-snmp-config injeta; é flag só-de-C).
+- Console interativo funcionando (show/use/set/unset/run/help/exit), agora com
+  as opções v3-auth, format e passwords.
+- `bixsn` roda de qualquer diretório via symlink ~/.local/bin/bixsn, E também
+  via `cmake --install` (binário em bin/, wordlists em share/bixsn).
+- VALIDADO AO VIVO (2026-11-23): probe de engineID / detecção de agente v3
+  (10.7.0.55, engineID 800063a2... = Net-SNMP).
+
+-------------------------------------------------------------------------------
+FEITO NESTA SESSÃO (2026-11-24) — commit 1335c26
+-------------------------------------------------------------------------------
+[x] Commit das mudanças pendentes (já estavam no histórico: ff6615c).
+[x] Audit log agora registra ACHADOS: linha FINDING por host (engineID,
+    communities ro/rw, usuários v3) + cada SET do --test-write (tentativa e
+    resultado) + cada tentativa de auth do brute v3.
+[x] Brute de SENHA v3: --v3-auth-brute testa data/v3-passwords.txt (MD5/SHA,
+    authNoPriv) contra cada usuário achado; achado Critical por senha.
+[x] Saída --format json (report::write_json).
+[x] cmake --install (GNUInstallDirs): bin/ + share/bixsn.
+[x] Warning de build filtrado no CMake.
+[x] LICENSE: titular preenchido (heitorpita).
+[x] show_options: paths longos não são mais cortados em 28 chars.
+[x] engineID: documentado que o discovery é a fonte primária; v3_enum só
+    sonda como fallback (sem descoberta duplicada no run_scan normal).
+
+-------------------------------------------------------------------------------
+PENDENTE — TESTES AO VIVO (o mais importante; precisa de snmpd via sudo)
+-------------------------------------------------------------------------------
+Subir um snmpd local (v2c community RW + um usuário v3 USM conhecido) e rodar:
+
+    sudo apt-get install -y snmpd
+    # v2c: rocommunity public / rwcommunity private  em /etc/snmp/snmpd.conf
+    # v3:  net-snmp-create-v3-user -ro -A <authpass> -a SHA <usuario>
+    sudo systemctl restart snmpd
+
+    bixsn -r 127.0.0.1 127.0.0.1                      # v2c community (RO)
+    bixsn -r 127.0.0.1 --test-write 127.0.0.1         # confirmar RW -> CRITICAL
+    bixsn --version v3 -r 127.0.0.1 127.0.0.1         # enum usuário USM
+    bixsn --version v3 --v3-auth-brute -r 127.0.0.1 127.0.0.1  # brute de senha
+
+[ ] v3 USM enum — confirmar o ramo "usuário EXISTE" (hoje deu 0 em 10.7.0.55;
+    não se sabe se é ausência real ou wordlist que não bate). Checar
+    map_lib_errno (snmp_session.cpp) e a regra em v3_enum.cpp.
+[ ] --test-write — NUNCA exercido ao vivo. ESCREVE sysLocation (write-back
+    idempotente). Confirmar o achado CRITICAL. (community_brute.cpp:~50)
+[ ] --v3-auth-brute — NUNCA exercido ao vivo. Precisa de um usuário USM com
+    senha conhecida da wordlist p/ confirmar o achado Critical. Lembrar:
+    generate_Ku exige passphrase >= 8 bytes (senhas curtas são puladas).
+[ ] Console `run` end-to-end com rede real (só foi testado por pipe).
+
+-------------------------------------------------------------------------------
+PENDENTE — MELHORIAS DE CÓDIGO (restantes)
+-------------------------------------------------------------------------------
+[ ] Brute v3 só testa authNoPriv com MD5/SHA-1. Avaliar SHA-2 e authPriv.
+
+-------------------------------------------------------------------------------
+PENDENTE — MENOR / AMBIENTE
+-------------------------------------------------------------------------------
+[ ] (opcional) git push -u origin main   (remote: github.com/heitorpita/bixsn)
+    -> NÃO feito nesta sessão; deixado a seu critério (ação externa).
+[ ] (ambiente) node não instalado -> hook SessionStart do plugin ponytail
+    falha. Instalar node (nvm) ou desativar o plugin. Não afeta o bixsn.
+===============================================================================
